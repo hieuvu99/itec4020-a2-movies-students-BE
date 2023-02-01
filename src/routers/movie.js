@@ -5,7 +5,7 @@ const router = new express.Router()
 const Movie = require(__basedir + '/models/movie')
 const Comment = require(__basedir + '/models/comment')
 
-const DEFAULT_MOVIES_PER_PAGE = 10
+const DEFAULT_MOVIES_PER_PAGE = 9
 const DEFAULT_COMMENTS_PER_PAGE = 3
 
 /**
@@ -37,11 +37,43 @@ const DEFAULT_COMMENTS_PER_PAGE = 3
 // GET /movies -> gets a list of movies, sorted and paginated
 router.get('/movies', async (req, res) => {
   // TODO: fill out the code for the endpoint
+  var pageNumber = req.query.page;  
+  if(pageNumber == null)
+    pageNumber=1;
+
+  const result = await  Movie.find({})
+                              .sort({popularity : -1})
+                              .skip( pageNumber > 0 ? ( ( pageNumber - 1 ) * DEFAULT_MOVIES_PER_PAGE ) : 0 )
+                              .limit( DEFAULT_MOVIES_PER_PAGE )
+                              .exec();
+  
+  const count = await Movie.count();
+  
+  res.status(202).send({
+      data : result,
+      count : count,
+      pagination : {
+        page : pageNumber,
+        pageCount : Math.ceil(count / DEFAULT_MOVIES_PER_PAGE)
+      }                 
+    })
 })
 
 // GET /movies/:id --> gets a movie by id
 router.get('/movies/:id', async (req, res) => {
   // TODO: fill out the code for the endpoint
+  const id = req.params.id.trim();
+  const result = await  Movie.find({_id : id}).exec();
+  
+
+  if (result === undefined || result.length == 0 ) {
+    return res.status(404).send({
+      err:{
+        id: "The ID was not found!"
+      }
+    })
+  }
+  return res.status(202).send(result)
 })
 
 // POST /search/movies/by-genres --> searches for JSON array of genres we want to search in, sorted and paginated
@@ -51,7 +83,37 @@ router.get('/movies/:id', async (req, res) => {
  * For more information, see: https://docs.mongodb.com/manual/reference/operator/query/all/
  */
 router.post('/search/movies/by-genres', async (req, res) => {
-  // TODO: fill out the code for the endpoint
+  // TODO: fill out the code for the endpoint    
+  const genres = req.body;
+  var pageNumber = req.query.page.trim();    
+  if(pageNumber == null)
+    pageNumber=1;
+
+  const count = await Movie.find({ genres: { $all: genres } })
+                            .count()
+                            .exec();
+  
+  if(count === 0)
+    {return res.status(404).send({msg : "There aren't any movies contain these genres"})} 
+  const result = await  Movie.find({ genres: { $all: genres } })
+                              .sort({popularity : -1})
+                              .skip( pageNumber > 0 ? ( ( pageNumber - 1 ) * DEFAULT_MOVIES_PER_PAGE ) : 0 )
+                              .limit( DEFAULT_MOVIES_PER_PAGE )
+                              .exec();
+   
+  const pageCount = Math.ceil(count / DEFAULT_MOVIES_PER_PAGE);
+
+ 
+
+  res.status(202).send({
+      data : result,
+      count : count,
+      pagination : {
+      page : pageNumber,
+      pageCount : pageCount
+    }
+  })
+
 })
 
 // POST /search/movies/by-countries --> searches for movies with JSON array of countries
@@ -63,7 +125,31 @@ router.post('/search/movies/by-genres', async (req, res) => {
  * For more information, see: https://docs.mongodb.com/manual/reference/operator/query/in/
  */
 router.post('/search/movies/by-countries', async (req, res) => {
-  // TODO: fill out the code for the endpoint
+  // TODO: fill out the code for the endpoint  const result = await  Movie.find({ genres: { $all: genres } })
+  const countries = req.body;
+  var pageNumber = req.query.page.trim();
+  if(pageNumber == null)
+  pageNumber=1;  
+  const count = await Movie.find({ production_countries: { $in: countries } }).count().exec();
+   
+  if(count === 0)
+    return res.status(404).send({msg : "There aren't any movies products in one of these countries "})
+   
+  const result = await  Movie.find({ production_countries: { $in: countries } })
+                              .sort({popularity : -1})
+                              .skip( pageNumber > 0 ? ( ( pageNumber - 1 ) * DEFAULT_MOVIES_PER_PAGE ) : 0 )
+                              .limit( DEFAULT_MOVIES_PER_PAGE )
+                              .exec();
+   
+
+  res.status(202).send({
+    data : result,  
+    count : count,
+    pagination : {
+    page : pageNumber.trim(),
+    pageCount : Math.ceil(count / DEFAULT_MOVIES_PER_PAGE)
+    }
+  })                        
 })
 
 // POST /movies/:id/comments --> creates a comment for a movie, gets the object structure as JSON
@@ -73,11 +159,57 @@ router.post('/search/movies/by-countries', async (req, res) => {
  */
 router.post('/movies/:id/comments', async (req, res) => {
   // TODO: fill out the code for the endpoint
+  const id = req.params.id;
+  const text = req.body.text;
+
+  if(text==="") 
+    return res.status(404).send({
+      err:{
+        id: "You havent Comment anything yet!"
+      }
+  })
+
+  const newComment = new Comment({
+    movie : id,
+    text : text,
+  });
+  await newComment.save()
+  
+  const result =  await Comment.findOne({_id: newComment._id})
+                              .populate('movie').exec();
+
+  return res.send({
+    msg: "Success",
+    comment: result
+    })
 })
 
 // GET /movies/:id/comments --> gets the comments for a movie, paginated, sorted by posting date (descending, meaning from new to old)
 router.get('/movies/:id/comments', async (req, res) => {
   // TODO: fill out the code for the endpoint
+  const id = req.params.id.trim();
+  var pageNumber = req.query.page.trim();
+  if(pageNumber === null)
+    pageNumber=1;   
+
+  const result = await  Comment.find({movie: id})
+  .skip( pageNumber > 0 ? ( ( pageNumber - 1 ) * DEFAULT_COMMENTS_PER_PAGE ) : 0 )
+  .sort({"createdAt": -1})
+  .limit( DEFAULT_COMMENTS_PER_PAGE )
+  .populate('movie')
+  .exec();
+
+  const count = await Comment.find({movie: id}).count();
+   
+
+  res.status(202).send({
+    data : result,
+    count : count,
+    pagination : {
+      page : pageNumber,
+      pageCount : Math.ceil(count / DEFAULT_COMMENTS_PER_PAGE)
+    }
+  })
 })
 
 module.exports = router
