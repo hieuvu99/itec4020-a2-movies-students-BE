@@ -5,8 +5,9 @@ const router = new express.Router()
 const Movie = require(__basedir + '/models/movie')
 const Comment = require(__basedir + '/models/comment')
 
-const DEFAULT_MOVIES_PER_PAGE = 9
+const DEFAULT_MOVIES_PER_PAGE = 18
 const DEFAULT_COMMENTS_PER_PAGE = 3
+const DEFAULT_SEARCH_MOVIE = 8
 
 /**
  * Some API endpoints in this application are sorted and paginated. Here, we will go over
@@ -91,6 +92,18 @@ router.get('/movies/:id', async (req, res) => {
   
 })
 
+router.get('/movies/genres/all',async (req,res) =>{
+  try {
+
+    const result = await Movie.distinct('genres', {}).exec();
+    res.status(202).send({
+      data : result
+  })
+  } catch (error) {
+    res.status(404).send({err: error.stack})
+  }
+})
+
 // POST /search/movies/by-genres --> searches for JSON array of genres we want to search in, sorted and paginated
 /**
  * Note: only return movies that match **all** genres. For example, if out request says
@@ -101,7 +114,7 @@ router.post('/search/movies/by-genres', async (req, res) => {
   // TODO: fill out the code for the endpoint  
   try {
     
-    const genres = req.body;
+    const {genres} = req.body;
     var pageNumber = req.query.page;    
     if(pageNumber == null)
       pageNumber=1;
@@ -248,19 +261,18 @@ router.get('/movies/:id/comments', async (req, res) => {
   } 
 })
 
-router.post('/test', async (req, res) => {
+router.get('/search', async (req, res) => {
   try {
-    const search = req.body.search;
-    const result = await  Movie.find({"$match":{
-          "title": {"regex": search, "$options": "i" }
-          } 
-        },function(err,docs) { 
-        } 
-      )
-    .sort({popularity : -1})
-    .skip( 1 > 0 ? ( ( 1 - 1 ) * DEFAULT_MOVIES_PER_PAGE ) : 0 )
-    .limit( DEFAULT_MOVIES_PER_PAGE )
+    const {text,pageNumber} = req.query;
+    var result = await   Movie.find({ title: { $regex: text, $options: 'i' } }).sort({popularity : -1})
+    .skip( pageNumber > 0 ? ( ( pageNumber - 1 ) * DEFAULT_SEARCH_MOVIE ) : 0 )
+    .limit( DEFAULT_SEARCH_MOVIE )
     .exec();
+    result = result.map(function({_id,title,original_id, poster_path,release_date}) {
+      return {id: _id,title:title, original_id: original_id, poster_path:poster_path, release_date:release_date };
+    });
+    if(result.length>8)
+      result = result.slice(0,8)
     res.status(200).send({data:result})
   } catch (error) {
     res.status(404).send({error:error.stack})
